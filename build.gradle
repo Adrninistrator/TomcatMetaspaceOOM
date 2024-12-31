@@ -1,0 +1,168 @@
+group 'com.test'
+
+apply plugin: 'war'
+apply plugin: 'eclipse-wtp'
+
+def projectName = 'TomcatMetaspaceOOM'
+description = "TomcatMetaspaceOOM"
+version = "1.0.0"
+
+sourceCompatibility = JavaVersion.VERSION_1_8
+targetCompatibility = JavaVersion.VERSION_1_8
+[compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
+
+repositories {
+    mavenCentral()
+}
+
+configurations {
+    implementation.exclude module: 'slf4j-log4j12'
+    implementation.exclude module: 'log4j'
+    implementation.exclude module: 'commons-logging'
+    implementation.exclude module: 'jsp-api'
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir 'src/main/java'
+        }
+
+        resources {
+            srcDir 'src/main/resources'
+        }
+    }
+
+    test {
+        java {
+            srcDir 'src/test/java'
+        }
+
+        resources {
+            srcDir 'src/test/resources'
+        }
+    }
+}
+
+clean {
+    delete 'build'
+}
+
+processResources {
+    setDuplicatesStrategy(DuplicatesStrategy.INCLUDE)
+}
+
+processTestResources {
+    setDuplicatesStrategy(DuplicatesStrategy.INCLUDE)
+}
+
+def spring_version = "5.3.39"
+
+List spring = [
+        "org.springframework:spring-web:$spring_version",
+        "org.springframework:spring-aspects:$spring_version",
+        "org.springframework:spring-webmvc:$spring_version",
+        "org.springframework:spring-context-support:$spring_version"
+]
+
+List log4jweb = ['org.apache.logging.log4j:log4j-web:2.24.0']
+
+def jackson_ver = "2.14.3"
+List jackson = [
+        "com.fasterxml.jackson.core:jackson-databind:$jackson_ver",
+        "com.fasterxml.jackson.module:jackson-module-jaxb-annotations:$jackson_ver"
+]
+
+List disruptor = ['com.lmax:disruptor:3.4.4']
+
+List logger = [
+        'org.apache.logging.log4j:log4j-api:2.24.0',
+        'org.apache.logging.log4j:log4j-core:2.24.0',
+        'org.apache.logging.log4j:log4j-slf4j-impl:2.24.0',
+        'org.slf4j:jcl-over-slf4j:1.7.36'
+]
+
+List apache_commons = [
+        'commons-io:commons-io:2.7',
+        'org.apache.commons:commons-lang3:3.6',
+        'commons-fileupload:commons-fileupload:1.5'
+]
+
+List javassist = ['org.javassist:javassist:3.30.2-GA']
+
+List reflections = ['org.reflections:reflections:0.10.2']
+
+List servlet = ['javax.servlet:javax.servlet-api:4.0.1']
+
+List junit = ['junit:junit:4.13.2']
+
+dependencies {
+    implementation spring, log4jweb, jackson, disruptor, logger, apache_commons, javassist, reflections
+    implementation files('lib/test-dto.jar')
+    providedCompile servlet
+    testImplementation servlet, junit
+}
+
+compileJava.dependsOn clean
+compileJava.options.compilerArgs << "-Xlint:unchecked" << "-Xlint:deprecation"
+
+processResources {
+    setDuplicatesStrategy(DuplicatesStrategy.INCLUDE)
+}
+
+processTestResources {
+    setDuplicatesStrategy(DuplicatesStrategy.INCLUDE)
+}
+
+war {
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    destinationDir file('build/war')
+    archiveName "tmso.war"
+
+    // 去掉和 Web 容器冲突的包（容器启动会报 Warning），不能直接用 exclude，因为 jar 包不属于 Resources
+    rootSpec.exclude '**/javax.el-api*.jar'
+
+    manifest {
+        attributes 'Implementation-Title': project.description
+        attributes 'Build-By': System.getProperty('user.name')
+        attributes 'Build-Time': new Date().format("yyyy-MM-dd HH:mm:ss")
+        attributes 'Source-Compatibility': project.sourceCompatibility
+        attributes 'Target-Compatibility': project.targetCompatibility
+    }
+}
+
+task createJavaProject {
+    doLast {
+        sourceSets*.java.srcDirs*.each { it.mkdirs() }
+        sourceSets*.resources.srcDirs*.each { it.mkdirs() }
+    }
+}
+
+task createWebProject(dependsOn: 'createJavaProject') {
+    doLast {
+        def webAppDir = file("$webAppDirName")
+        webAppDir.mkdirs()
+    }
+}
+
+task gen_javaagent(type: Jar) {
+    manifest {
+        attributes(
+                'Premain-Class': 'com.test.javaagent.ClassLoadAgent'
+        )
+    }
+    archiveFileName.set('tmso_javaagent.jar')
+    from(sourceSets.main.output) {
+        include 'com/test/javaagent/**'
+        into '/'
+    }
+    doLast {
+        copy {
+            from file('build/libs/tmso_javaagent.jar')
+            into 'lib/'
+        }
+    }
+}
+
+// gradlew startTomcat -DappName=tmso -Darg4Tomcat=""
+apply from: 'runTomcat.gradle'

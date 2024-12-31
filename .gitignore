@@ -1,0 +1,12 @@
+/bin
+/.settings
+/build
+/.gradle
+/.classpath
+/.project
+/.DS_Store
+/.idea
+/out
+/.smarttomcat
+*.class
+*.iml
